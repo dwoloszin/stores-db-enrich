@@ -1,0 +1,71 @@
+# enrich.yml — dedicated price-enrichment workflow (injected into the enrich repo
+# by deploy/deploy.py --enrich).
+#
+# Heavy, decoupled from the fast per-store listing scrape: fetches every product
+# page for the configured stores (Drogasil, Drogaraia) to backfill the real
+# selling price (promo_price). Runs once daily.
+#
+# Secrets required (set by deploy.py --enrich):
+#   DATABASE_URL_DROGASIL, DATABASE_URL_DROGARAIA  — target store DBs
+#   DB_ARCHIVE_GITHUB_TOKEN, DB_ARCHIVE_GITHUB_REPO
+
+name: Enrich Prices
+
+concurrency:
+  group: enrich
+  cancel-in-progress: false
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # daily — set by deploy.py
+  workflow_dispatch:
+    inputs:
+      stores:
+        description: "Stores to enrich (space-separated, empty = all)"
+        required: false
+        default: ""
+      limit:
+        description: "Max products per store (empty = no limit, for testing)"
+        required: false
+        default: ""
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create .env from secrets
+        shell: python
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          import os, json
+          secrets = json.loads(os.environ['ALL_SECRETS'])
+          written = 0
+          with open('.env', 'w') as f:
+              for key, val in secrets.items():
+                  if key.startswith('DATABASE_URL_') or key in ('DB_ARCHIVE_GITHUB_TOKEN', 'DB_ARCHIVE_GITHUB_REPO'):
+                      if val:
+                          f.write(f'{key}={val}\n')
+                          written += 1
+          print(f'Created .env with {written} variables')
+
+      - name: Run price enrichment
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.stores }}" ]; then ARGS="$ARGS ${{ inputs.stores }}"; fi
+          if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
+          python -m enrich_prices $ARGS
