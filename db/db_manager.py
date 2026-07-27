@@ -462,23 +462,27 @@ class StoreDB:
             self._reconnect()
             return self._load_missing_eans_impl()
 
-    def load_all_urls(self) -> Dict[str, str]:
+    def load_all_urls(self, min_price: float = 0.0) -> Dict[str, str]:
         """
-        Returns {product_id: product_url} for every offer with a product URL.
-        Used by the full price-enrichment pass (Drogasil/Drogaraia), where the
-        fast category listing only exposes the reference/max price (PMC) and the
-        real selling price lives on each product page.
+        Returns {product_id: product_url} for offers with a product URL and
+        regular_price >= min_price. Used by the price-enrichment pass
+        (Drogasil/Drogaraia), where the fast listing only exposes the
+        reference/max price (PMC) and the real selling price is on each product
+        page. min_price limits enrichment to high-value products to keep the
+        pass fast (e.g. 1000 → ~2% of the catalogue).
         """
         try:
             with self._conn.cursor() as cur:
                 cur.execute(
                     "SELECT product_id, product_url FROM offers "
-                    "WHERE product_url IS NOT NULL AND product_url != ''"
+                    "WHERE product_url IS NOT NULL AND product_url != '' "
+                    "  AND regular_price >= %s",
+                    (min_price,),
                 )
                 return {row[0]: row[1] for row in cur.fetchall()}
         except (psycopg2.OperationalError, psycopg2.InterfaceError):
             self._reconnect()
-            return self.load_all_urls()
+            return self.load_all_urls(min_price)
 
     def update_promo_prices(self, price_map: Dict[str, tuple]) -> int:
         """

@@ -87,13 +87,13 @@ def _fetch_price(session: requests.Session, pid: str, url: str
     return pid, None
 
 
-def enrich(db, limit: Optional[int] = None, workers: int = 16) -> Dict[str, int]:
-    targets = db.load_all_urls()                 # {product_id: product_url}
+def enrich(db, limit: Optional[int] = None, workers: int = 16, min_price: float = 1000.0) -> Dict[str, int]:
+    targets = db.load_all_urls(min_price)        # high-value products only
     items = list(targets.items())
     if limit:
         items = items[:limit]
     total = len(items)
-    print(f"Products to price-enrich: {total:,}")
+    print(f"Products to price-enrich (regular_price >= {min_price:g}): {total:,}")
     if not total:
         return {"fetched": 0, "with_promo": 0, "updated": 0}
 
@@ -129,12 +129,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backfill promotional prices for Drogasil")
     parser.add_argument("--limit",   type=int, default=None)
     parser.add_argument("--workers", type=int, default=16)
+    parser.add_argument("--min-price", type=float, default=1000.0, dest="min_price")
     parser.add_argument("--env",     type=str, default=".env")
     args = parser.parse_args()
 
     from db.db_manager import DrogasilDB, load_env
     load_env(args.env)
     db = DrogasilDB()
-    stats = enrich(db, limit=args.limit, workers=args.workers)
+    stats = enrich(db, limit=args.limit, workers=args.workers, min_price=args.min_price)
     db.close()
     print(f"\nDone. Pages: {stats['fetched']:,}  promos: {stats['with_promo']:,}  updated: {stats['updated']:,}")

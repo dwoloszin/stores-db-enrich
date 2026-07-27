@@ -36,6 +36,8 @@ def main() -> None:
                         help=f"Stores to enrich (default: all — {', '.join(_PRICE_ENRICHERS)})")
     parser.add_argument("--workers", type=int, default=20)
     parser.add_argument("--limit",   type=int, default=None)
+    parser.add_argument("--min-price", type=float, default=1000.0, dest="min_price",
+                        help="Only enrich products with regular_price >= this (default 1000)")
     parser.add_argument("--env",     type=str, default=".env")
     args = parser.parse_args()
 
@@ -54,7 +56,7 @@ def main() -> None:
         try:
             mod = importlib.import_module(_PRICE_ENRICHERS[store])
             db = STORE_REGISTRY[store]()
-            stats = mod.enrich(db, limit=args.limit, workers=args.workers)
+            stats = mod.enrich(db, limit=args.limit, workers=args.workers, min_price=args.min_price)
             print(f"[{store}] done in {(time.time()-t0)/60:.1f} min — "
                   f"promos: {stats.get('with_promo', 0):,}, updated: {stats.get('updated', 0):,}")
         except Exception as exc:
