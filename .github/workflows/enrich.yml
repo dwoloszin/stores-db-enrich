@@ -1,9 +1,9 @@
-# enrich.yml — dedicated price-enrichment workflow (injected into the enrich repo
-# by deploy/deploy.py --enrich).
+# enrich.yml — MANUAL full-catalogue price-enrichment tool (injected into the
+# enrich repo by deploy/deploy.py --enrich).
 #
-# Heavy, decoupled from the fast per-store listing scrape: fetches every product
-# page for the configured stores (Drogasil, Drogaraia) to backfill the real
-# selling price (promo_price). Runs once daily.
+# Routine high-value enrichment now runs INLINE right after each store's scrape
+# (see store-scrape.yml). This repo is kept as a manual, on-demand tool for a
+# deeper pass — e.g. re-enrich the WHOLE catalogue with `min_price = 0`.
 #
 # Secrets required (set by deploy.py --enrich):
 #   DATABASE_URL_DROGASIL, DATABASE_URL_DROGARAIA  — target store DBs
@@ -16,10 +16,12 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  schedule:
-    - cron: '0 5 * * *'   # daily — set by deploy.py
   workflow_dispatch:
     inputs:
+      min_price:
+        description: "Only enrich products with regular_price >= this (0 = whole catalogue)"
+        required: false
+        default: "1000"
       limit:
         description: "Max products per store (empty = no limit, for testing)"
         required: false
@@ -65,6 +67,6 @@ jobs:
 
       - name: Run price enrichment
         run: |
-          ARGS="${{ matrix.store }} --workers 30"
+          ARGS="${{ matrix.store }} --workers 30 --min-price ${{ inputs.min_price }}"
           if [ -n "${{ inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ inputs.limit }}"; fi
           python -m enrich_prices $ARGS
